@@ -96,8 +96,6 @@ impl Money {
             return Vec::new();
         }
 
-        // Extract the currency information without keeping a borrow of `self`
-        // alive while random numbers are generated below.
         let (coin_count, largest_coin, bills) = match self.currency.as_ref() {
             Some(currency) => {
                 let largest_coin = currency.coins.iter().map(|(_, value)| *value).filter(|value| value.is_finite() && *value > 0.0).max_by(|a, b| a.total_cmp(b));
@@ -110,10 +108,8 @@ impl Money {
         };
 
         let smallest_bill = bills.iter().copied().min_by(|a, b| a.total_cmp(b));
-        let largest_bill = bills .iter().copied().max_by(|a, b| a.total_cmp(b));
+        let largest_bill = bills.iter().copied().max_by(|a, b| a.total_cmp(b));
 
-        // Banknotes become relevant when the fare exceeds the largest coin,
-        // or reaches the value of the smallest banknote.
         let may_use_bills = match (largest_coin, smallest_bill) {
             (Some(largest_coin), Some(smallest_bill)) => {
                 price > largest_coin || price >= smallest_bill
@@ -123,15 +119,12 @@ impl Money {
             (None, None) => false,
         };
 
-        // Limit banknotes to the smallest denomination that covers the fare.
-        // If no banknote covers it, the largest available banknote is the limit.
         let bill_limit = if may_use_bills {
             bills.iter().copied().filter(|value| *value >= price).min_by(|a, b| a.total_cmp(b)).or(largest_bill)
         } else {
             None
         };
-        // These are probability weights, not monetary thresholds:
-        // banknotes become more likely once the fare reaches the smallest bill.
+
         let bill_weight: usize = match (bill_limit, smallest_bill) {
             (Some(_), Some(smallest_bill)) if price >= smallest_bill => 6,
             (Some(_), _) => 3,
@@ -141,7 +134,7 @@ impl Money {
         if all.is_empty() {
             return self.exact_coins_for(price);
         }
-        // Keep the original denomination IDs: coins first, banknotes afterwards.
+
         let mut choices: Vec<(usize, f32)> = Vec::new();
         for &(id, value) in &all {
             if !value.is_finite() || value <= 0.0 {
@@ -152,11 +145,9 @@ impl Money {
                 let Some(limit) = bill_limit else {
                     continue;
                 };
-                // Never offer a banknote above the permitted limit.
                 if value > limit || bill_weight == 0 {
                     continue;
                 }
-                // Repeating an option increases its probability of selection.
                 for _ in 0..bill_weight {
                     choices.push((id, value));
                 }
@@ -173,7 +164,6 @@ impl Money {
         let mut out: Vec<(usize, f32)> = Vec::new();
         let mut sum = 0.0_f32;
 
-        // Select random denominations until the fare is covered.
         while sum < price && out.len() < 200 {
             let k = ((self.rand_f() * choices.len() as f32) as usize).min(choices.len() - 1);
 
@@ -181,8 +171,7 @@ impl Money {
             sum += value;
             out.push((id, value));
         }
-        // Remove unnecessary pieces while the remaining amount still covers
-        // the fare, allowing for half the smallest coin as in the original.
+
         let mut again = true;
 
         while again {
@@ -306,10 +295,25 @@ mod tests {
         price: f32,
         max_bill: Option<f32>,
     ) {
-        let coin_count = money.currency.as_ref().unwrap().coins.len();
+        let currency = money.currency.as_ref().unwrap();
+        let coin_count = currency.coins.len();
+        let smallest_coin = currency
+            .coins
+            .iter()
+            .map(|coin| coin.1)
+            .fold(f32::INFINITY, f32::min);
 
         for _ in 0..100 {
             let pieces = money.omsi_coins_for(price);
+
+            let total = money.value_of(&pieces);
+            let minimum = price - smallest_coin / 2.0;
+
+            assert!(
+                total + 0.001 >= minimum,
+                "Fare {price}: selected pieces are worth {total}, \
+                below the minimum expected amount {minimum}"
+            );
 
             for id in pieces {
                 if id < coin_count {
@@ -322,11 +326,11 @@ mod tests {
                     Some(limit) => assert!(
                         value <= limit + 0.001,
                         "Fare {price}: selected a {value} banknote, \
-                         but the maximum allowed is {limit}"
+                        but the maximum allowed is {limit}"
                     ),
                     None => panic!(
                         "Fare {price}: selected a {value} banknote, \
-                         although banknotes should not be used"
+                        although banknotes should not be used"
                     ),
                 }
             }

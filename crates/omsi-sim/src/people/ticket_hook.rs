@@ -240,8 +240,6 @@ impl PeopleSim {
         let outside = p.inside.is_none() && p.task == Task::WalkingToBus;
         let at_desk_yet = p.inside.is_some() && p.task == Task::InBusToPlace && p.ticket == TICKET_BUY && p.sub < 4;
 
-        // The ticket and payment can only be changed for the player's bus,
-        // while the passenger is boarding or on the way to the cash desk.
         if changes_ticket || changes_payment {
             if p.bus != Some(BusId::Player) {
                 return Err("not a passenger of the player's bus");
