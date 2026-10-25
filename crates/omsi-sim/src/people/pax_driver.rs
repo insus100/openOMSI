@@ -197,15 +197,16 @@ impl PeopleSim {
             if self.desk_busy.is_some_and(|d| d != self.people[i].id) {
                 return;
             }
-            // A previous passenger's payment must be collected before
-            // another passenger starts selling a ticket.
+            // A previous passenger's payment must be collected before another passenger starts
+            // selling a ticket - by the driver; in `auto` boarding the game plays the driver
+            // and takes it with the ticket, as before.
             let payment_still_on_desk = self.money.as_ref().is_some_and(|m| {
                 m.placed
                     .iter()
                     .any(|(_, _, _, change, _)| !*change)
             });
 
-            if payment_still_on_desk {
+            if payment_still_on_desk && !auto {
                 return;
             }
             let k = 1 + self.rand() % 2;
@@ -270,6 +271,11 @@ impl PeopleSim {
             self.ticket_cash += value;
             self.sales.push((name, value));
             *taken_ticket = true;
+            if auto {
+                if let Some(m) = self.money.as_mut() {
+                    m.clear(false);
+                }
+            }
             self.paid = None;
             let pp = self.pax_mut(i).unwrap();
             if (p.price - p.paid).abs() > tol && !auto {
