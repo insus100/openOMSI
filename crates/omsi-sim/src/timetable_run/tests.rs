@@ -454,6 +454,39 @@ fn a_destination_picked_from_the_list_turns_the_roller_blind() {
     assert_eq!(set_player_destination_at(&mut ibis, &hof, "145", 1, &[]), None);
 }
 
+/// A destination picked from the list also turns a bus with the
+/// bus_rollband_setL1 trigger, as used by the Likino 677 and Ikarus i200.
+#[test]
+fn a_destination_picked_from_the_list_turns_a_bus_roller_blind() {
+    let osc = "{trigger:bus_rollband_setL1}\n{end}\n{trigger:ai_scheduled_settarget}\n(L.L.AI_target_index) (S.L.rlbnd_ziel_target)\n(L.$.SetLineTo) (S.$.rlbnd_line)\n{end}\n";
+    let vars = "IBIS_LinieKurs\nIBIS_TerminusIndex\nIBIS_TerminusCode\nAI_target_index\nrlbnd_ziel_target\nelec_busbar_main_sw\n";
+    let t = |code: i32, id: &str| omsi_vehicle::hof::Terminus {
+        code,
+        texture_id: id.into(),
+        strings: vec![id.to_uppercase()],
+        ..Default::default()
+    };
+    let hof = omsi_vehicle::Hof {
+        termini: vec![t(0, "Empty"), t(205, "U Ruhleben"), t(154, "U Rathaus Spandau")],
+        ..Default::default()
+    };
+
+    let mut v = script_test_vehicle(
+        osc,
+        vars,
+        "SetLineTo\nrlbnd_line\nIBIS_terminus_name\n",
+    );
+    v.set_var("elec_busbar_main_sw", 1.0);
+
+    let mut pick = set_player_destination_at(&mut v, &hof, "145", 2, &[]);
+    turn_roller_blind(&mut v, &mut pick, false);
+
+    assert_eq!(pick, None);
+    assert_eq!(v.var("rlbnd_ziel_target"), Some(2.0));
+    assert_eq!(v.str_var("rlbnd_line"), "145");
+    assert_eq!(v.var("IBIS_TerminusCode"), Some(154.0));
+}
+
 #[test]
 fn a_destination_picked_from_the_list_updates_display_target() {
     let osc = "{trigger:ai_scheduled_settarget}\n(L.L.AI_target_index) (S.L.display_target)\n{end}\n";
